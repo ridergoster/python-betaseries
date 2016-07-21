@@ -1,4 +1,6 @@
 #!/usr/bin/python
+from sys import exit
+import ast
 
 class Show:
     'class for a show on BetaSeries'
@@ -18,7 +20,7 @@ class Show:
         self.language = language
         self.user = user
 
-    def convertJson(self, res):
+    def convertDict(self, res):
         self.id = res['id']
         self.title = res['title']
         self.description = res['description']
@@ -31,12 +33,43 @@ class Show:
         self.rating = res['rating']
         self.network = res['network']
         self.language = res['language']
-        self.user = UserShow().convertJson(res['user'])
+        self.user = UserShow().convertDict(res['user'])
         return self
 
     def displayShow(self):
         msg = self.title +  " (" + self.creation + ") [season: " + self.seasons + " episodes: " + self.episodes + "]"
         return msg
+
+class UserLogin:
+    def __init__(self, id='', login = '', password = '', token = ''):
+        self.id = id
+        self.login = login
+        self.password = password
+        self.token = token
+        self.whip = ()
+
+    def reading(self):
+        with open('data.txt', 'r') as f:
+            s = f.read()
+            self.whip = ast.literal_eval(s)
+        self.id = self.whip[0]
+        self.login = self.whip[1]
+        self.password = self.whip[2]
+        self.token = self.whip[3]
+
+    def writing(self):
+        self.whip = self.id, self.login, self.password, self.token
+        target = open('data.txt', 'a')
+        target.seek(0)
+        target.truncate()
+        target.write(str(self.whip))
+        print self.whip
+
+    def convertDict(self, res):
+        self.id = res['user']['id']
+        self.login = res['user']['login']
+        self.token = res['token']
+        return self
 
 class UserShow:
     'class for user information on a show on BetaSeries'
@@ -48,9 +81,10 @@ class UserShow:
         self.status = status
         self.last = last
 
-    def convertJson(self, res):
+    def convertDict(self, res):
         self.archived = res['archived']
         self.favorited = res['favorited']
         self.remaining = res['remaining']
         self.status = res['status']
         self.last = res['last']
+        return self

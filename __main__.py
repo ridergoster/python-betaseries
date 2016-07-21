@@ -3,7 +3,7 @@ import window
 import hashlib
 import requests
 import sys
-from __betaseries__ import Show, UserShow
+from __betaseries__ import Show, UserLogin, UserShow
 
 API_KEY_PARAM    = '26f734f5598b';
 USER_LOGIN_PARAM = "";
@@ -17,26 +17,45 @@ class MainWindow(QtGui.QDialog, window.Ui_BetaSeries):
         self.setupUi(self)
         self.searchBtn.clicked.connect(self.searchShow)
         self.loginBtn.clicked.connect(self.login)
+        user = UserLogin()
+        user.reading()
+        if user.id > 0:
+            self.loadUser(user)
+
+    def loadUser(self, user):
+        self.mailTxt.setText(user.login)
+        self.pwdTxt.setText(user.password)
+        msg = self.connexion(user)
+        self.loginLabel.setText(msg)
 
     def login(self):
-        USER_LOGIN_PARAM = str(self.mailTxt.text())
+        user = UserLogin()
+        user.login = str(self.mailTxt.text())
         m = hashlib.md5()
-        m.update(self.pwdTxt.text().toUtf8())
-        print m.hexdigest()
-        USER_PWD_PARAM = m.hexdigest()
-        headers = {'X-BetaSeries-Key': API_KEY_PARAM}
-        payload = {'login': USER_LOGIN_PARAM, 'password': USER_PWD_PARAM}
-        url = 'https://api.betaseries.com/members/auth'
-        r = requests.post(url, params=payload, headers=headers)
-        res = r.json()
-        if len(res['errors']) > 0:
-            error = res['errors'][0]
-            msg = "ERROR " + str(error['code']) + ": " + error['text']
-        elif len(res['token']) > 0:
-            user = res['user']
-            TOKEN_PARAM = res['token']
-            msg = "Login as " + user['login']
+        m.update(str(self.pwdTxt.text()))
+        user.password = m.hexdigest()
+        msg = self.connexion(user)
         self.loginLabel.setText(msg)
+
+    def connexion(self, user):
+        USER_LOGIN_PARAM = user.login
+        USER_PWD_PARAM = user.password
+        if len(user.token) > 0:
+            TOKEN_PARAM = user.token
+            return 'Login as: ' + user.login
+        else:
+            headers = {'X-BetaSeries-Key': API_KEY_PARAM}
+            payload = {'login': USER_LOGIN_PARAM, 'password': USER_PWD_PARAM}
+            url = 'https://api.betaseries.com/members/auth'
+            r = requests.post(url, params=payload, headers=headers)
+            res = r.json()
+            if len(res['errors']) > 0:
+                return res['errors'][0]['text']
+            else:
+                newUser = UserLogin().convertDict(res)
+                newUser.password = user.password
+                newUser.writing()
+                return 'Login as: ' + newUser.login
 
     def searchShow(self):
         txt = str(self.searchTxt.text())
@@ -50,7 +69,7 @@ class MainWindow(QtGui.QDialog, window.Ui_BetaSeries):
             while self.resultList.count() > 0:
                 self.resultList.takeItem(0)
             for show in res['shows']:
-                show = Show().convertJson(show)
+                show = Show().convertDict(show)
                 self.resultList.addItem(QtGui.QListWidgetItem(show.displayShow()))
 
 if __name__ == "__main__":
