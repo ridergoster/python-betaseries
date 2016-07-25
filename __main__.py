@@ -1,14 +1,11 @@
 from PyQt4 import QtCore, QtGui
 import window
 import hashlib
-import requests
 import sys
-from __betaseries__ import Show, UserLogin, UserShow
+from __betaseries__ import Show, UserLogin, UserShow, Episode
+from __betaseriesAPI__ import BetaSeriesAPI
 
-API_KEY_PARAM    = '26f734f5598b';
-USER_LOGIN_PARAM = "";
-USER_PWD_PARAM   = "";
-TOKEN_PARAM      = "";
+API_KEY_PARAM    = '26f734f5598b'
 
 class MainWindow(QtGui.QDialog, window.Ui_BetaSeries):
 
@@ -17,60 +14,128 @@ class MainWindow(QtGui.QDialog, window.Ui_BetaSeries):
         self.setupUi(self)
         self.searchBtn.clicked.connect(self.searchShow)
         self.loginBtn.clicked.connect(self.login)
+        self.planningBtn.clicked.connect(self.searchPlanning)
+        self.showsBtn.clicked.connect(self.searchCollectionShow)
+        self.postBtn.clicked.connect(self.postAction)
+        self.isLogged = False
+        self.shows = []
+        self.episodes = []
         user = UserLogin()
         user.reading()
         if user.id > 0:
-            self.loadUser(user)
-
-    def loadUser(self, user):
-        self.mailTxt.setText(user.login)
-        self.pwdTxt.setText(user.password)
-        msg = self.connexion(user)
-        self.loginLabel.setText(msg)
+            self.isLogged = True
+            self.loginTxt.setText(user.login)
+            self.pwdTxt.setText(user.password)
+            self.API = BetaSeriesAPI(API_KEY_PARAM, user.token)
+            self.loginLabel.setText('Login as: ' + user.login)
+        else:
+            self.API = BetaSeriesAPI(API_KEY_PARAM)
 
     def login(self):
+        self.isLogged = False
         user = UserLogin()
-        user.login = str(self.mailTxt.text())
+        user.login = str(self.loginTxt.text())
         m = hashlib.md5()
         m.update(str(self.pwdTxt.text()))
         user.password = m.hexdigest()
-        msg = self.connexion(user)
-        self.loginLabel.setText(msg)
-
-    def connexion(self, user):
-        USER_LOGIN_PARAM = user.login
-        USER_PWD_PARAM = user.password
-        if len(user.token) > 0:
-            TOKEN_PARAM = user.token
-            return 'Login as: ' + user.login
+        email = str(self.emailTxt.text())
+        if len(email) > 0:
+            request = self.API.subscribe(user.login, user.password, email)
         else:
-            headers = {'X-BetaSeries-Key': API_KEY_PARAM}
-            payload = {'login': USER_LOGIN_PARAM, 'password': USER_PWD_PARAM}
-            url = 'https://api.betaseries.com/members/auth'
-            r = requests.post(url, params=payload, headers=headers)
-            res = r.json()
-            if len(res['errors']) > 0:
-                return res['errors'][0]['text']
+            request = self.API.login(user.login, user.password)
+        if len(request['errors']) > 0:
+            msg = request['errors'][0]['text']
+            print msg
+        else:
+            self.isLogged = True
+            newUser = UserLogin().convertDict(request)
+            newUser.password = user.password
+            newUser.writing()
+            self.API.setAccessToken(newUser.token)
+            if len(email) > 0:
+                msg = 'Login as new user: ' + newUser.login
             else:
-                newUser = UserLogin().convertDict(res)
-                newUser.password = user.password
-                newUser.writing()
-                return 'Login as: ' + newUser.login
+                msg = 'Login as: ' + newUser.login
+        self.loginLabel.setText(msg)
 
     def searchShow(self):
         txt = str(self.searchTxt.text())
-        if len(txt) > 0:
-            payload = {'title': txt}
-            url = 'https://api.betaseries.com/shows/search'
-            headers = {'X-BetaSeries-Key': API_KEY_PARAM}
-            r = requests.get(url, params=payload, headers=headers)
-            res = r.json()
-            print r.json()
-            while self.resultList.count() > 0:
-                self.resultList.takeItem(0)
-            for show in res['shows']:
+        if len(txt) < 1:
+            return
+        request = self.API.getShows(txt)
+        if len(request['errors']) > 0:
+            msg = request['errors'][0]['text']
+            self.loginLabel.setText(msg)
+        else:
+            self.cleanTable()
+            for show in request['shows']:
                 show = Show().convertDict(show)
-                self.resultList.addItem(QtGui.QListWidgetItem(show.displayShow()))
+                self.shows.append(show)
+                self.resultList.addItem(QtGui.QListWidgetItem(show.display()))
+            self.postBtn.setText("Add show to Collection")
+
+    def searchCollectionShow(self):
+        if self.isLogged == False:
+            return
+        request = self.API.getMemberInformation()
+        if len(request['errors']) > 0:
+            msg = request['errors'][0]['text']
+            self.loginLabel.setText(msg)
+        else:
+            self.cleanTable()
+            for show in request['member']['shows']:
+                show = Show().convertDict(show)
+                self.resultList.addItem(QtGui.QListWidgetItem(show.display()))
+            self.postBtn.setText("")
+
+    def searchPlanning(self):
+        if self.isLogged == False:
+            return
+        request = self.API.getEpisodes()
+        if len(request['errors']) > 0:
+            msg = request['errors'][0]['text']
+            self.loginLabel.setText(msg)
+        else:
+            self.cleanTable()
+            for show in request['shows']:
+                for episode in show['unseen']:
+                    episode = Episode().convertDict(episode)
+                    self.episodes.append(episode)
+                    self.resultList.addItem(QtGui.QListWidgetItem(episode.display()))
+            self.postBtn.setText("Check episode as seen")
+
+    def postAction(self):
+        if len(self.shows) > 0 and self.resultList.currentRow() > -1:
+            self.postShow(self.resultList.currentRow())
+        elif len(self.episodes) > 0 and self.resultList.currentRow() > -1:
+            self.postEpisode(self.resultList.currentRow())
+
+    def postShow(self, item):
+        show = self.shows[item];
+        request = self.API.postShow(show.id)
+        if len(request['errors']) > 0:
+            msg = request['errors'][0]['text']
+            self.postLabel.setText(msg)
+        else:
+            self.postLabel.setText("Show " + show.title + " added !" )
+            self.searchShow()
+
+
+    def postEpisode(self, item):
+        episode = self.episodes[item];
+        request = self.API.postEpisode(episode.id)
+        if len(request['errors']) > 0:
+            msg = request['errors'][0]['text']
+            self.postLabel.setText(msg)
+        else:
+            self.postLabel.setText("[" + episode.show + "]: " + episode.title + " mark as seen !" )
+            self.searchPlanning()
+
+    def cleanTable(self):
+        self.shows = []
+        self.episodes = []
+        while self.resultList.count() > 0:
+            self.resultList.takeItem(0)
 
 if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)

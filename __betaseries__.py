@@ -1,5 +1,6 @@
 #!/usr/bin/python
 from sys import exit
+import os
 import ast
 
 class Show:
@@ -36,12 +37,16 @@ class Show:
         self.user = UserShow().convertDict(res['user'])
         return self
 
-    def displayShow(self):
-        msg = self.title +  " (" + self.creation + ") [season: " + self.seasons + " episodes: " + self.episodes + "]"
+    def display(self):
+        if not self.user.status:
+            msg = self.title +  " (" + self.creation + ") [season: " + self.seasons + " episodes: " + self.episodes + "]"
+        else:
+            msg = self.title +  " (" + self.creation + ") [season: " + self.seasons + " episodes: " + self.episodes + "] - User Completion : " + str(self.user.status) + "%"
+
         return msg
 
 class UserLogin:
-    def __init__(self, id='', login = '', password = '', token = ''):
+    def __init__(self, id=0, login = '', password = '', token = ''):
         self.id = id
         self.login = login
         self.password = password
@@ -49,6 +54,8 @@ class UserLogin:
         self.whip = ()
 
     def reading(self):
+        if os.path.isfile("data.txt") == False or os.stat("data.txt").st_size == 0:
+            return
         with open('data.txt', 'r') as f:
             s = f.read()
             self.whip = ast.literal_eval(s)
@@ -66,9 +73,11 @@ class UserLogin:
         print self.whip
 
     def convertDict(self, res):
+        print res
         self.id = res['user']['id']
         self.login = res['user']['login']
         self.token = res['token']
+        print res
         return self
 
 class UserShow:
@@ -88,3 +97,23 @@ class UserShow:
         self.status = res['status']
         self.last = res['last']
         return self
+
+class Episode:
+    'class for user information on a show on BetaSeries'
+
+    def __init__(self, id = 0, show = '', code = '', title = ''):
+        self.id = id
+        self.show = show
+        self.code = code
+        self.title = title
+
+    def convertDict(self, res):
+        self.id = res['id']
+        self.show = res['show']['title']
+        self.code = res['code']
+        self.title = res['title']
+        return self
+
+    def display(self):
+        msg = self.show +  " (" + self.code + "): " + self.title
+        return msg
